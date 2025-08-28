@@ -62,7 +62,7 @@ app.post('/api/payments/verify', async (req, res) => {
     if (paymentData.status && paymentData.data.status === 'success') {
       // Payment is successful, enroll the user in the course
       try {
-        const enrollResponse = await axios.post(`http://localhost:5000/api/${courseId}/enroll`, {
+        const enrollResponse = await axios.post(`https://eduglobal-servernew-1.onrender.com/api/${courseId}/enroll`, {
           userId: paymentData.data.metadata.userId, // Assuming userId was passed in metadata
         });
 
