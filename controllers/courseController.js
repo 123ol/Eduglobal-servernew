@@ -85,12 +85,22 @@ const getAllCourses = asyncHandler(async (req, res) => {
   });
 });
 
-// Get all courses for current user (student)
+
 const getUserCourses = asyncHandler(async (req, res) => {
-  const courses = await Course.find({ enrolledStudents: req.user._id })
-    .populate("instructor", "name email");
-  res.json(courses);
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+    const courses = await Course.find({ enrolledStudents: req.user._id })
+      .populate("instructor", "name email");
+    res.json({ enrolledCourses: courses, count: courses.length });
+  } catch (error) {
+    console.error('Error in getUserCourses:', error);
+    res.status(500).json({ message: "Server error while fetching enrolled courses" });
+  }
 });
+
+export { getUserCourses };
 
 // Update course
 const updateCourse = asyncHandler(async (req, res) => {
