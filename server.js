@@ -44,44 +44,43 @@ app.use((err, req, res, next) => {
 });
 // Verify payment endpoint
 app.post('/api/payments/verify', async (req, res) => {
-  const { reference, courseId } = req.body;
+  const { reference } = req.body;
 
-  if (!reference || !courseId) {
-    return res.status(400).json({ success: false, message: 'Reference and courseId are required.' });
+  if (!reference) {
+    return res.status(400).json({ success: false, message: 'Reference is required.' });
   }
 
   try {
-    // Verify payment with Paystack
-    const response = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
-      headers: {
-        Authorization: `Bearer sk_test_cb35b2feb06c965ed71f9b36ab23d1e9110ded1c`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: {
+          Authorization: `Bearer sk_test_cb35b2feb06c965ed71f9b36ab23d1e9110ded1c`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
     const paymentData = response.data;
-    if (paymentData.status && paymentData.data.status === 'success') {
-      // Payment is successful, enroll the user in the course
-      try {
-        const enrollResponse = await axios.post(`https://eduglobal-servernew-1.onrender.com/api/${courseId}/enroll`, {
-          userId: paymentData.data.metadata.userId, // Assuming userId was passed in metadata
-        });
 
-        if (enrollResponse.status === 200) {
-          return res.status(200).json({ success: true, message: 'Payment verified and user enrolled successfully.' });
-        } else {
-          return res.status(500).json({ success: false, message: 'Payment verified but failed to enroll user.' });
-        }
-      } catch (enrollError) {
-        console.error('Enrollment error:', enrollError);
-        return res.status(500).json({ success: false, message: 'Payment verified but failed to enroll user.' });
-      }
+    if (paymentData.status && paymentData.data.status === 'success') {
+      return res.status(200).json({
+        success: true,
+        message: 'Payment verified successfully',
+        data: paymentData.data,
+      });
     } else {
-      return res.status(400).json({ success: false, message: 'Payment verification failed.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed',
+      });
     }
   } catch (error) {
     console.error('Payment verification error:', error);
-    return res.status(500).json({ success: false, message: 'Error verifying payment.' });
+    return res.status(500).json({
+      success: false,
+      message: 'Error verifying payment',
+    });
   }
 });
 
