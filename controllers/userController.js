@@ -1,46 +1,86 @@
-
 import asyncHandler from 'express-async-handler';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
+import Course from '../models/Course.js';
+import Lecture from '../models/Lecture.js';
+import Topic from '../models/Topic.js';
+import UserProgress from '../models/UserProgress.js';
 
-// @desc    Get total number of enrolled students and their details
-// @route   GET /api/users/enrolled
+// @desc    Get total number of enrolled students and their details with progress
+// @route   GET /api/students/enrolled
 // @access  Private/Admin
 const getEnrolledStudents = asyncHandler(async (req, res) => {
-  const totalEnrolledStudents = await User.countDocuments({
-    role: 'student',
-    enrolledCourses: { $ne: [] },
-  });
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Admin access required');
+  }
 
   const students = await User.find({
     role: 'student',
-    enrolledCourses: { $ne: [] },
   })
-    .select('name email enrolledCourses')
+    .select('_id name email location createdAt avatar')
     .lean();
 
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      const enrollmentCount = await Enrollment.countDocuments({ user: student._id });
+      // Fetch enrolled courses
+      const enrollments = await Enrollment.find({ user: student._id }).populate({
+        path: 'course',
+        populate: { path: 'lectures' },
+      });
+      const courses = enrollments.map((e) => e.course).filter(Boolean);
+
+      let totalTopics = 0;
+      let completedTopics = 0;
+
+      // Calculate topic-based progress
+      for (const course of courses) {
+        const lectures = course.lectures || [];
+        for (const lecture of lectures) {
+          const topics = await Topic.find({ lecture: lecture._id }).lean();
+          totalTopics += topics.length;
+
+          const progress = await UserProgress.find({
+            userId: student._id,
+            lectureId: lecture._id,
+            topicId: { $in: topics.map((t) => t._id) },
+            completed: true,
+          }).lean();
+          completedTopics += progress.length;
+        }
+      }
+
       return {
         _id: student._id,
-        name: student.name,
-        email: student.email,
-        enrolledCoursesCount: enrollmentCount,
+        name: student.name || 'Unknown',
+        email: student.email || 'Unknown',
+        location: student.location || 'Unknown',
+        createdAt: student.createdAt || Date.now(),
+        avatar: student.avatar || null,
+        totalCourses: courses.length,
+        progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
       };
     })
   );
 
+  // Filter students with at least one enrolled course
+  const enrolledStudentDetails = studentDetails.filter((s) => s.totalCourses > 0);
+
   res.status(200).json({
-    totalEnrolledStudents,
-    studentDetails,
+    totalEnrolledStudents: enrolledStudentDetails.length,
+    studentDetails: enrolledStudentDetails,
   });
 });
 
-// @desc    Get total number of all students (enrolled or not) and their details
-// @route   GET /api/users/total
+// @desc    Get total number of all students (enrolled or not) and their details with progress
+// @route   GET /api/students
 // @access  Private/Admin
 const getTotalStudents = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Admin access required');
+  }
+
   const { search } = req.query;
 
   // Build query
@@ -52,37 +92,68 @@ const getTotalStudents = asyncHandler(async (req, res) => {
     ];
   }
 
-  // Count students
-  const totalStudents = await User.countDocuments(query);
-
-  // Fetch student data
+  // Fetch students
   const students = await User.find(query)
-    .select('name email enrolledCourses')
+    .select('_id name email location createdAt avatar')
     .lean();
 
-  // Calculate enrolled courses count
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      const enrollmentCount = await Enrollment.countDocuments({ user: student._id });
+      // Fetch enrolled courses
+      const enrollments = await Enrollment.find({ user: student._id }).populate({
+        path: 'course',
+        populate: { path: 'lectures' },
+      });
+      const courses = enrollments.map((e) => e.course).filter(Boolean);
+
+      let totalTopics = 0;
+      let completedTopics = 0;
+
+      // Calculate topic-based progress
+      for (const course of courses) {
+        const lectures = course.lectures || [];
+        for (const lecture of lectures) {
+          const topics = await Topic.find({ lecture: lecture._id }).lean();
+          totalTopics += topics.length;
+
+          const progress = await UserProgress.find({
+            userId: student._id,
+            lectureId: lecture._id,
+            topicId: { $in: topics.map((t) => t._id) },
+            completed: true,
+          }).lean();
+          completedTopics += progress.length;
+        }
+      }
+
       return {
         _id: student._id,
-        name: student.name,
-        email: student.email,
-        enrolledCoursesCount: enrollmentCount,
+        name: student.name || 'Unknown',
+        email: student.email || 'Unknown',
+        location: student.location || 'Unknown',
+        createdAt: student.createdAt || Date.now(),
+        avatar: student.avatar || null,
+        totalCourses: courses.length,
+        progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
       };
     })
   );
 
   res.status(200).json({
-    totalStudents,
+    totalStudents: students.length,
     studentDetails,
   });
 });
 
-// @desc    Delete a student and their enrollments
-// @route   DELETE /api/users/:id
+// @desc    Delete a student and their enrollments and progress
+// @route   DELETE /api/students/:id
 // @access  Private/Admin
 const deleteStudent = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Admin access required');
+  }
+
   const { id } = req.params;
 
   const user = await User.findById(id);
@@ -97,6 +168,7 @@ const deleteStudent = asyncHandler(async (req, res) => {
   }
 
   await Enrollment.deleteMany({ user: id });
+  await UserProgress.deleteMany({ userId: id });
   await User.findByIdAndDelete(id);
 
   res.status(200).json({
