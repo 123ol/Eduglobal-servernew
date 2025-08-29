@@ -88,9 +88,12 @@ const getAllCourses = asyncHandler(async (req, res) => {
 // Get all courses for current user (student)
 const getUserCourses = asyncHandler(async (req, res) => {
   const courses = await Course.find({ enrolledStudents: req.user._id })
-    .populate("instructor", "name email");
+    .populate("instructor", "name email")
+    .populate("lectures");
+
   res.json(courses);
 });
+
 
 // Update course
 const updateCourse = asyncHandler(async (req, res) => {
