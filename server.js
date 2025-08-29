@@ -9,6 +9,7 @@ import categoryRoutes from './routes/categoryRoutes.js';
 import lectureRoutes from './routes/lectureRoutes.js';
 import topicRoutes from './routes/topicRoutes.js';
 import userRoutes from './routes/userRoutes.js'
+import axios from "axios";
 // Load environment variables
 dotenv.config();
 
