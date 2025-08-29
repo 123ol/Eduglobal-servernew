@@ -15,40 +15,63 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
     throw new Error('Admin access required');
   }
 
-  const students = await User.find({
-    role: 'student',
-  })
+  const { search } = req.query;
+  const query = { role: 'student' };
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  const students = await User.find(query)
     .select('_id name email location createdAt avatar')
     .lean();
+  console.log(`getEnrolledStudents: Found ${students.length} students`);
 
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      // Fetch enrolled courses
-      const enrollments = await Enrollment.find({ user: student._id }).populate({
-        path: 'course',
-        populate: { path: 'lectures' },
-      });
+      const enrollments = await Enrollment.find({ user: student._id })
+        .populate({
+          path: 'course',
+          select: 'title lectures',
+          populate: { path: 'lectures', select: 'title' },
+        })
+        .lean();
       const courses = enrollments.map((e) => e.course).filter(Boolean);
+      console.log(
+        `Student ${student._id}: Enrollments=${enrollments.length}, Courses=${courses.map((c) => c.title).join(', ')}`
+      );
 
       let totalTopics = 0;
       let completedTopics = 0;
 
-      // Calculate topic-based progress
       for (const course of courses) {
         const lectures = course.lectures || [];
+        console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
         for (const lecture of lectures) {
           const topics = await Topic.find({ lecture: lecture._id }).lean();
           totalTopics += topics.length;
+          console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
           const progress = await UserProgress.find({
             userId: student._id,
             lectureId: lecture._id,
             topicId: { $in: topics.map((t) => t._id) },
-            completed: true,
           }).lean();
-          completedTopics += progress.length;
+          const completed = progress.filter((p) => p.completed);
+          completedTopics += completed.length;
+          console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
+          if (progress.length > 0) {
+            console.log(
+              `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
+              progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
+            );
+          }
         }
       }
+
+      console.log(`Student ${student._id}: TotalTopics=${totalTopics}, CompletedTopics=${completedTopics}`);
 
       return {
         _id: student._id,
@@ -63,8 +86,8 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
     })
   );
 
-  // Filter students with at least one enrolled course
   const enrolledStudentDetails = studentDetails.filter((s) => s.totalCourses > 0);
+  console.log(`getEnrolledStudents: Enrolled students=${enrolledStudentDetails.length}`);
 
   res.status(200).json({
     totalEnrolledStudents: enrolledStudentDetails.length,
@@ -82,8 +105,6 @@ const getTotalStudents = asyncHandler(async (req, res) => {
   }
 
   const { search } = req.query;
-
-  // Build query
   const query = { role: 'student' };
   if (search) {
     query.$or = [
@@ -92,39 +113,54 @@ const getTotalStudents = asyncHandler(async (req, res) => {
     ];
   }
 
-  // Fetch students
   const students = await User.find(query)
     .select('_id name email location createdAt avatar')
     .lean();
+  console.log(`getTotalStudents: Found ${students.length} students`);
 
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      // Fetch enrolled courses
-      const enrollments = await Enrollment.find({ user: student._id }).populate({
-        path: 'course',
-        populate: { path: 'lectures' },
-      });
+      const enrollments = await Enrollment.find({ user: student._id })
+        .populate({
+          path: 'course',
+          select: 'title lectures',
+          populate: { path: 'lectures', select: 'title' },
+        })
+        .lean();
       const courses = enrollments.map((e) => e.course).filter(Boolean);
+      console.log(
+        `Student ${student._id}: Enrollments=${enrollments.length}, Courses=${courses.map((c) => c.title).join(', ')}`
+      );
 
       let totalTopics = 0;
       let completedTopics = 0;
 
-      // Calculate topic-based progress
       for (const course of courses) {
         const lectures = course.lectures || [];
+        console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
         for (const lecture of lectures) {
           const topics = await Topic.find({ lecture: lecture._id }).lean();
           totalTopics += topics.length;
+          console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
           const progress = await UserProgress.find({
             userId: student._id,
             lectureId: lecture._id,
             topicId: { $in: topics.map((t) => t._id) },
-            completed: true,
           }).lean();
-          completedTopics += progress.length;
+          const completed = progress.filter((p) => p.completed);
+          completedTopics += completed.length;
+          console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
+          if (progress.length > 0) {
+            console.log(
+              `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
+              progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
+            );
+          }
         }
       }
+
+      console.log(`Student ${student._id}: TotalTopics=${totalTopics}, CompletedTopics=${completedTopics}`);
 
       return {
         _id: student._id,
@@ -177,4 +213,52 @@ const deleteStudent = asyncHandler(async (req, res) => {
   });
 });
 
-export { getEnrolledStudents, getTotalStudents, deleteStudent };
+// @desc    Enroll a student in a course
+// @route   POST /api/courses/:id/enroll
+// @access  Private
+const enrollStudent = asyncHandler(async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user.id; // From protect middleware
+
+  const user = await User.findById(userId);
+  if (!user || user.role !== 'student') {
+    res.status(403);
+    throw new Error('Only students can enroll');
+  }
+
+  const course = await Course.findById(courseId);
+  if (!course) {
+    res.status(404);
+    throw new Error('Course not found');
+  }
+
+  const existingEnrollment = await Enrollment.findOne({ user: userId, course: courseId });
+  if (existingEnrollment) {
+    res.status(400);
+    throw new Error('Student already enrolled in this course');
+  }
+
+  const enrollment = await Enrollment.create({ user: userId, course: courseId });
+  console.log(`Student ${userId} enrolled in course ${courseId}`);
+
+  // Initialize UserProgress for all topics in the course
+  const lectures = await Lecture.find({ course: courseId });
+  for (const lecture of lectures) {
+    const topics = await Topic.find({ lecture: lecture._id });
+    for (const topic of topics) {
+      await UserProgress.create({
+        userId,
+        lectureId: lecture._id,
+        topicId: topic._id,
+        completed: false,
+      });
+    }
+  }
+
+  res.status(201).json({
+    message: 'Enrolled successfully',
+    enrollment: { user: userId, course: courseId },
+  });
+});
+
+export { getEnrolledStudents, getTotalStudents, deleteStudent, enrollStudent };
