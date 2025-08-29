@@ -20,7 +20,7 @@ router.get("/:id", getCourseDetails); // Get details of a single course (include
 
 // Protected routes (require authentication)
 router.post("/", protect, createCourse); // Create a new course
-router.get("/user/courses", protect, getUserCourses); // Get all courses for the current user (student)
+router.get("/user/courses",  getUserCourses); // Get all courses for the current user (student)
 router.put("/:id", protect, updateCourse); // Update a course
 router.delete("/:id", protect, deleteCourse); // Delete a course
 router.post("/:id/enroll", enrollCourse); // Enroll in a course
