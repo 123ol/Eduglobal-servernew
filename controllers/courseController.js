@@ -100,7 +100,6 @@ const getUserCourses = asyncHandler(async (req, res) => {
   }
 });
 
-export { getUserCourses };
 
 // Update course
 const updateCourse = asyncHandler(async (req, res) => {
