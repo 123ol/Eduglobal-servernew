@@ -6,3 +6,5 @@ const router = express.Router();
 router.get('/api/students/enrolled', protect, getEnrolledStudents);
 router.get('/api/students', protect, getTotalStudents);
 router.delete('/api/students/:id', protect, deleteStudent);
+
+export default router;
