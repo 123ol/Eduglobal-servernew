@@ -70,45 +70,54 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
         }`
       );
 
-      let totalTopics = 0;
-      let completedTopics = 0;
+      const courseDetails = await Promise.all(
+        courses.map(async (course) => {
+          let totalTopics = 0;
+          let completedTopics = 0;
+          const lectures = course.lectures || [];
+          console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
 
-      for (const course of courses) {
-        const lectures = course.lectures || [];
-        console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
-        for (const lecture of lectures) {
-          const topics = await Topic.find({ lecture: lecture._id })
-            .lean()
-            .catch((err) => {
-              console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
-              return [];
-            });
-          totalTopics += topics.length;
-          console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
+          for (const lecture of lectures) {
+            const topics = await Topic.find({ lecture: lecture._id })
+              .lean()
+              .catch((err) => {
+                console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
+                return [];
+              });
+            totalTopics += topics.length;
+            console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
-          const progress = await UserProgress.find({
-            userId: studentId,
-            lectureId: lecture._id,
-            topicId: { $in: topics.map((t) => t._id) },
-          })
-            .lean()
-            .catch((err) => {
-              console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
-              return [];
-            });
-          const completed = progress.filter((p) => p.completed);
-          completedTopics += completed.length;
-          console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
-          if (progress.length > 0) {
-            console.log(
-              `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
-              progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
-            );
+            const progress = await UserProgress.find({
+              userId: studentId,
+              lectureId: lecture._id,
+              topicId: { $in: topics.map((t) => t._id) },
+            })
+              .lean()
+              .catch((err) => {
+                console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
+                return [];
+              });
+            const completed = progress.filter((p) => p.completed);
+            completedTopics += completed.length;
+            console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
+            if (progress.length > 0) {
+              console.log(
+                `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
+                progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
+              );
+            }
           }
-        }
-      }
 
-      console.log(`Student ${student._id}: TotalTopics=${totalTopics}, CompletedTopics=${completedTopics}`);
+          return {
+            courseId: course._id,
+            title: course.title,
+            progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
+          };
+        })
+      );
+
+      const totalTopics = courseDetails.reduce((sum, course) => sum + (course.progress > 0 ? 1 : 0), 0);
+      const totalCompletedTopics = courseDetails.reduce((sum, course) => sum + (course.progress > 0 ? course.progress / 100 : 0), 0);
 
       return {
         _id: student._id,
@@ -118,7 +127,8 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
         createdAt: student.createdAt || Date.now(),
         avatar: student.avatar || null,
         totalCourses: courses.length,
-        progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
+        progress: totalTopics > 0 ? Math.trunc((totalCompletedTopics / totalTopics) * 100) : 0,
+        courses: courseDetails,
       };
     })
   );
@@ -195,45 +205,54 @@ const getTotalStudents = asyncHandler(async (req, res) => {
         }`
       );
 
-      let totalTopics = 0;
-      let completedTopics = 0;
+      const courseDetails = await Promise.all(
+        courses.map(async (course) => {
+          let totalTopics = 0;
+          let completedTopics = 0;
+          const lectures = course.lectures || [];
+          console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
 
-      for (const course of courses) {
-        const lectures = course.lectures || [];
-        console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
-        for (const lecture of lectures) {
-          const topics = await Topic.find({ lecture: lecture._id })
-            .lean()
-            .catch((err) => {
-              console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
-              return [];
-            });
-          totalTopics += topics.length;
-          console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
+          for (const lecture of lectures) {
+            const topics = await Topic.find({ lecture: lecture._id })
+              .lean()
+              .catch((err) => {
+                console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
+                return [];
+              });
+            totalTopics += topics.length;
+            console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
-          const progress = await UserProgress.find({
-            userId: studentId,
-            lectureId: lecture._id,
-            topicId: { $in: topics.map((t) => t._id) },
-          })
-            .lean()
-            .catch((err) => {
-              console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
-              return [];
-            });
-          const completed = progress.filter((p) => p.completed);
-          completedTopics += completed.length;
-          console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
-          if (progress.length > 0) {
-            console.log(
-              `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
-              progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
-            );
+            const progress = await UserProgress.find({
+              userId: studentId,
+              lectureId: lecture._id,
+              topicId: { $in: topics.map((t) => t._id) },
+            })
+              .lean()
+              .catch((err) => {
+                console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
+                return [];
+              });
+            const completed = progress.filter((p) => p.completed);
+            completedTopics += completed.length;
+            console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
+            if (progress.length > 0) {
+              console.log(
+                `Student ${student._id}, Lecture ${lecture._id}: ProgressRecords=`,
+                progress.map((p) => ({ topicId: p.topicId, completed: p.completed }))
+              );
+            }
           }
-        }
-      }
 
-      console.log(`Student ${student._id}: TotalTopics=${totalTopics}, CompletedTopics=${completedTopics}`);
+          return {
+            courseId: course._id,
+            title: course.title,
+            progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
+          };
+        })
+      );
+
+      const totalTopics = courseDetails.reduce((sum, course) => sum + (course.progress > 0 ? 1 : 0), 0);
+      const totalCompletedTopics = courseDetails.reduce((sum, course) => sum + (course.progress > 0 ? course.progress / 100 : 0), 0);
 
       return {
         _id: student._id,
@@ -243,7 +262,8 @@ const getTotalStudents = asyncHandler(async (req, res) => {
         createdAt: student.createdAt || Date.now(),
         avatar: student.avatar || null,
         totalCourses: courses.length,
-        progress: totalTopics > 0 ? Math.trunc((completedTopics / totalTopics) * 100) : 0,
+        progress: totalTopics > 0 ? Math.trunc((totalCompletedTopics / totalTopics) * 100) : 0,
+        courses: courseDetails,
       };
     })
   );
