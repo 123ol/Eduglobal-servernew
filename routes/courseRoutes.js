@@ -23,7 +23,7 @@ router.post("/", protect, createCourse); // Create a new course
 router.get("/user/courses", protect, getUserCourses); // Get all courses for the current user (student)
 router.put("/:id", protect, updateCourse); // Update a course
 router.delete("/:id", protect, deleteCourse); // Delete a course
-router.post("/:id/enroll", enrollCourse); // Enroll in a course
+router.post("/:id/enroll",protect, enrollCourse); // Enroll in a course
 router.get("/:id/students", protect, getEnrolledStudents); // Get all students enrolled in a course
 router.post("/:id/rate", protect, rateCourse); // Rate a course (enrolled students only)
 
