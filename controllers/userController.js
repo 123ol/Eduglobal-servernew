@@ -1,4 +1,5 @@
 import asyncHandler from 'express-async-handler';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Enrollment from '../models/Enrollment.js';
 import Course from '../models/Course.js';
@@ -26,21 +27,47 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
 
   const students = await User.find(query)
     .select('_id name email location createdAt avatar')
-    .lean();
+    .lean()
+    .catch((err) => {
+      console.error('User query error:', err.message);
+      throw new Error('Failed to fetch students');
+    });
   console.log(`getEnrolledStudents: Found ${students.length} students`);
 
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      const enrollments = await Enrollment.find({ user: student._id })
+      const studentId = new mongoose.Types.ObjectId(student._id);
+      let enrollments = await Enrollment.find({ user: studentId })
         .populate({
           path: 'course',
           select: 'title lectures',
           populate: { path: 'lectures', select: 'title' },
         })
-        .lean();
+        .lean()
+        .catch((err) => {
+          console.error(`Enrollment query error for student ${student._id}:`, err.message);
+          return [];
+        });
+
+      // Fallback: Check Course.enrolledStudents
+      if (enrollments.length === 0) {
+        const coursesWithStudent = await Course.find({ enrolledStudents: studentId })
+          .select('title lectures')
+          .populate({ path: 'lectures', select: 'title' })
+          .lean()
+          .catch((err) => {
+            console.error(`Course query error for student ${student._id}:`, err.message);
+            return [];
+          });
+        enrollments = coursesWithStudent.map((course) => ({ course }));
+        console.log(`Student ${student._id} (${student.email}): Fallback used, found ${coursesWithStudent.length} courses in Course.enrolledStudents`);
+      }
+
       const courses = enrollments.map((e) => e.course).filter(Boolean);
       console.log(
-        `Student ${student._id}: Enrollments=${enrollments.length}, Courses=${courses.map((c) => c.title).join(', ')}`
+        `Student ${student._id} (${student.email}): Enrollments=${enrollments.length}, Courses=${
+          courses.length > 0 ? courses.map((c) => c.title).join(', ') : 'None'
+        }`
       );
 
       let totalTopics = 0;
@@ -50,15 +77,25 @@ const getEnrolledStudents = asyncHandler(async (req, res) => {
         const lectures = course.lectures || [];
         console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
         for (const lecture of lectures) {
-          const topics = await Topic.find({ lecture: lecture._id }).lean();
+          const topics = await Topic.find({ lecture: lecture._id })
+            .lean()
+            .catch((err) => {
+              console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
+              return [];
+            });
           totalTopics += topics.length;
           console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
           const progress = await UserProgress.find({
-            userId: student._id,
+            userId: studentId,
             lectureId: lecture._id,
             topicId: { $in: topics.map((t) => t._id) },
-          }).lean();
+          })
+            .lean()
+            .catch((err) => {
+              console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
+              return [];
+            });
           const completed = progress.filter((p) => p.completed);
           completedTopics += completed.length;
           console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
@@ -115,21 +152,47 @@ const getTotalStudents = asyncHandler(async (req, res) => {
 
   const students = await User.find(query)
     .select('_id name email location createdAt avatar')
-    .lean();
+    .lean()
+    .catch((err) => {
+      console.error('User query error:', err.message);
+      throw new Error('Failed to fetch students');
+    });
   console.log(`getTotalStudents: Found ${students.length} students`);
 
   const studentDetails = await Promise.all(
     students.map(async (student) => {
-      const enrollments = await Enrollment.find({ user: student._id })
+      const studentId = new mongoose.Types.ObjectId(student._id);
+      let enrollments = await Enrollment.find({ user: studentId })
         .populate({
           path: 'course',
           select: 'title lectures',
           populate: { path: 'lectures', select: 'title' },
         })
-        .lean();
+        .lean()
+        .catch((err) => {
+          console.error(`Enrollment query error for student ${student._id}:`, err.message);
+          return [];
+        });
+
+      // Fallback: Check Course.enrolledStudents
+      if (enrollments.length === 0) {
+        const coursesWithStudent = await Course.find({ enrolledStudents: studentId })
+          .select('title lectures')
+          .populate({ path: 'lectures', select: 'title' })
+          .lean()
+          .catch((err) => {
+            console.error(`Course query error for student ${student._id}:`, err.message);
+            return [];
+          });
+        enrollments = coursesWithStudent.map((course) => ({ course }));
+        console.log(`Student ${student._id} (${student.email}): Fallback used, found ${coursesWithStudent.length} courses in Course.enrolledStudents`);
+      }
+
       const courses = enrollments.map((e) => e.course).filter(Boolean);
       console.log(
-        `Student ${student._id}: Enrollments=${enrollments.length}, Courses=${courses.map((c) => c.title).join(', ')}`
+        `Student ${student._id} (${student.email}): Enrollments=${enrollments.length}, Courses=${
+          courses.length > 0 ? courses.map((c) => c.title).join(', ') : 'None'
+        }`
       );
 
       let totalTopics = 0;
@@ -139,15 +202,25 @@ const getTotalStudents = asyncHandler(async (req, res) => {
         const lectures = course.lectures || [];
         console.log(`Course ${course._id} (${course.title}): Lectures=${lectures.length}`);
         for (const lecture of lectures) {
-          const topics = await Topic.find({ lecture: lecture._id }).lean();
+          const topics = await Topic.find({ lecture: lecture._id })
+            .lean()
+            .catch((err) => {
+              console.error(`Topic query error for lecture ${lecture._id}:`, err.message);
+              return [];
+            });
           totalTopics += topics.length;
           console.log(`Lecture ${lecture._id} (${lecture.title}): Topics=${topics.length}`);
 
           const progress = await UserProgress.find({
-            userId: student._id,
+            userId: studentId,
             lectureId: lecture._id,
             topicId: { $in: topics.map((t) => t._id) },
-          }).lean();
+          })
+            .lean()
+            .catch((err) => {
+              console.error(`UserProgress query error for student ${student._id}, lecture ${lecture._id}:`, err.message);
+              return [];
+            });
           const completed = progress.filter((p) => p.completed);
           completedTopics += completed.length;
           console.log(`Lecture ${lecture._id}: TotalProgressRecords=${progress.length}, Completed=${completed.length}`);
@@ -205,6 +278,7 @@ const deleteStudent = asyncHandler(async (req, res) => {
 
   await Enrollment.deleteMany({ user: id });
   await UserProgress.deleteMany({ userId: id });
+  await Course.updateMany({ enrolledStudents: id }, { $pull: { enrolledStudents: id } });
   await User.findByIdAndDelete(id);
 
   res.status(200).json({
@@ -218,7 +292,7 @@ const deleteStudent = asyncHandler(async (req, res) => {
 // @access  Private
 const enrollStudent = asyncHandler(async (req, res) => {
   const { id: courseId } = req.params;
-  const userId = req.user.id; // From protect middleware
+  const userId = req.user.id;
 
   const user = await User.findById(userId);
   if (!user || user.role !== 'student') {
@@ -238,13 +312,16 @@ const enrollStudent = asyncHandler(async (req, res) => {
     throw new Error('Student already enrolled in this course');
   }
 
+  // Create Enrollment record
   const enrollment = await Enrollment.create({ user: userId, course: courseId });
-  console.log(`Student ${userId} enrolled in course ${courseId}`);
+  // Update Course.enrolledStudents
+  await Course.findByIdAndUpdate(courseId, { $addToSet: { enrolledStudents: userId } });
+  console.log(`Student ${userId} enrolled in course ${courseId} (${course.title})`);
 
   // Initialize UserProgress for all topics in the course
-  const lectures = await Lecture.find({ course: courseId });
+  const lectures = await Lecture.find({ course: courseId }).lean();
   for (const lecture of lectures) {
-    const topics = await Topic.find({ lecture: lecture._id });
+    const topics = await Topic.find({ lecture: lecture._id }).lean();
     for (const topic of topics) {
       await UserProgress.create({
         userId,
@@ -252,6 +329,7 @@ const enrollStudent = asyncHandler(async (req, res) => {
         topicId: topic._id,
         completed: false,
       });
+      console.log(`Initialized UserProgress for user ${userId}, topic ${topic._id}`);
     }
   }
 
