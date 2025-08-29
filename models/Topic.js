@@ -5,7 +5,8 @@ const topicSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
   resourceType: { type: String, enum: ["video", "pdf"], required: true },
-  resourceLink: { type: String, required: true } // video link or pdf link
+  resourceLink: { type: String, required: true }, // video link or pdf link
+  completed:{ type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model("Topic", topicSchema);
